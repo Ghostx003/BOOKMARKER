@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Link Master: Mobile Optimized</title>
+    <link rel="icon" type="image/png" href="icon.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <nav>
+        <div class="nav-item active" onclick="switchView('home')">All Links</div>
+        <div class="nav-item" onclick="switchView('sessions')">Sessions</div>
+        <div class="nav-item" onclick="switchView('groups')">Groups</div>
+        <div class="nav-item" onclick="switchView('export')">Export/Restore</div>
+        <div class="nav-item nav-action" onclick="removeDuplicates()">Cleanup</div>
+        <div class="nav-item nav-action" style="color:var(--danger); border-color:var(--danger);" onclick="resetApp()">Reset</div>
+    </nav>
+
+    <main id="view-home" class="active-view">
+        <div class="input-group">
+            <h2 style="border:none; padding:0; margin:0; font-size:1.2rem;">Quick Add</h2>
+            <textarea id="homePaste" placeholder="Paste links here..." rows="2"></textarea>
+            <button class="primary" onclick="handleHomePaste()">Add Links</button>
+        </div>
+        <div class="controls-bar">
+            <div class="header-wrap">
+                <h2 style="margin:0; border:none; padding:0; font-size:1.2rem;">All Links</h2>
+                <span id="stackCounter" class="counter-badge">Loading...</span>
+            </div>
+            <select id="sortMode" class="sort-dropdown" onchange="renderHome()">
+                <option value="new">Newest First</option>
+                <option value="unchecked">Unchecked First</option>
+                <option value="checked">Checked First</option>
+                <option value="random">Shuffle</option>
+            </select>
+        </div>
+        <div id="stackContainer" style="background: #121215; border-radius: 12px; border: 1px solid #27272a;"></div>
+    </main>
+
+    <main id="view-sessions">
+        <div class="controls-bar" style="flex-direction:row; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+            <h2 style="margin:0; border:none; padding:0; font-size:1.2rem;">Sessions</h2>
+            <div style="display:flex; gap:10px;">
+                <button class="btn-warning" id="mergeBtn" onclick="confirmMergeSessions()">Merge Selected (<span id="mergeCount">0</span>)</button>
+                <button class="primary" onclick="createNewSession()">+ New</button>
+            </div>
+        </div>
+        <div id="sessionsContainer"></div>
+    </main>
+
+    <main id="view-groups">
+        <div class="input-group">
+            <h2 style="border:none; padding:0; margin:0; font-size:1.2rem;">Create Groups</h2>
+            <p style="color:var(--text-muted); font-size:0.85rem;">Shuffles unwatched, visible links.</p>
+            <div style="display:flex; gap:10px;">
+                <input type="number" id="groupSize" value="2" min="1" style="flex:1;">
+                <button class="primary" onclick="generateGroups()" style="flex:2;">Shuffle</button>
+            </div>
+        </div>
+        <div id="groupsContainer"></div>
+    </main>
+
+    <main id="view-export">
+        <h2 style="color: var(--success); border-color: var(--success); font-size:1.3rem;">Data Management</h2>
+        
+        <div class="export-card">
+            <h3 style="margin-bottom:10px; color:white; font-size:1.1rem;">Full State Backup</h3>
+            <p style="color:#888; margin-bottom:15px; font-size:0.85rem;">Save everything (Sessions, Groups, History) to JSON.</p>
+            <div class="export-actions">
+                <button class="primary" onclick="exportFullState()">💾 Export State (JSON)</button>
+                <button class="primary" style="background: #333; border-color: #555;" onclick="triggerRestore()">♻️ Recovery / Restore</button>
+                <input type="file" id="restoreInput" accept=".json" style="display:none;" onchange="handleRestoreFile(this)">
+            </div>
+        </div>
+
+        <div class="export-card">
+            <h3 style="margin-bottom:10px; color:white; font-size:1.1rem;">Text Export</h3>
+            <p style="color:#888; margin-bottom:15px; font-size:0.85rem;">Save links as text files.</p>
+            <div class="export-actions">
+                <button class="primary" onclick="exportMainLinksTxt()">📄 Save Main Links Only</button>
+                <button class="primary" onclick="exportAllSessionsTxt()">📑 Save All Session Links</button>
+            </div>
+        </div>
+
+        <div class="export-card">
+            <h3 style="margin-bottom:10px; color:white; font-size:1.1rem;">Individual Sessions</h3>
+            <div id="exportSessionList"></div>
+        </div>
+    </main>
+
+    <!-- Custom Modal -->
+    <div id="customModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.75); backdrop-filter:blur(4px); z-index:2000; align-items:center; justify-content:center;">
+        <div style="background:#18181b; padding:25px; border-radius:14px; border:1px solid #3f3f46; max-width:480px; width:92%; text-align:center; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);">
+            <h3 style="margin-top:0; margin-bottom:12px; color:#f4f4f5; font-size:1.2rem; font-weight:700;" id="modalTitle">Confirm</h3>
+            <p style="color:#a1a1aa; margin-bottom:15px; font-size:0.9rem; line-height: 1.5;" id="modalDesc">Are you sure?</p>
+            <input type="text" id="modalInput" style="display:none; margin-bottom:15px;" placeholder="">
+            <textarea id="modalTextarea" style="display:none; margin-bottom:15px;" placeholder="" rows="3"></textarea>
+            <div id="modalCustomContent" style="display:none; margin-bottom:15px; text-align:left;"></div>
+            <div style="display:flex; gap:12px; justify-content:center; margin-top:15px;">
+                <button onclick="closeModal()" style="flex:1; background:#27272a; border:1px solid #3f3f46; color:#f4f4f5; padding:10px; border-radius:8px; font-weight:600; cursor:pointer;">Cancel</button>
+                <button class="primary" style="flex:1; background:#f43f5e; border:1px solid #f43f5e; color:#ffffff; padding:10px; border-radius:8px; font-weight:600; cursor:pointer;" id="modalConfirmBtn">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <svg style="display: none;">
+        <symbol id="icon-arrow" viewBox="0 0 24 24"><path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></symbol>
+        <symbol id="icon-eye" viewBox="0 0 24 24"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></symbol>
+        <symbol id="icon-eye-off" viewBox="0 0 24 24"><path d="M17.56 15.6l3.3 3.3.71-.71-3.65-3.65-14.5-14.5-.71.71 2.39 2.39C2.9 5.3 1.5 8.4 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42 1.41 1.41.71-.71-1.41-1.41zM12 17c-2.76 0-5-2.24-5-5 0-.77.18-1.5.51-2.14l1.65 1.65C8.36 12.39 8 13.15 8 14c0 1.66 1.34 3 3 3 .85 0 1.61-.36 2.49-1.16l1.65 1.65c-.64.33-1.37.51-2.14.51zm8.88-5c-.71-1.53-1.78-2.87-3.11-3.92l1.6-1.6C21.05 7.84 22.4 9.8 23 12c-.22.56-.48 1.1-.78 1.6l-1.34-1.34zM12 4.5c1.94 0 3.75.47 5.35 1.29l1.6-1.6C17.07 3.01 14.62 2.5 12 2.5c-5 0-9.27 3.11-11 7.5.34.86.77 1.67 1.28 2.4l1.64-1.64C3.25 9.4 3.06 8.71 3 8c1.37-3.46 4.93-6 9-6z"/></symbol>
+        <symbol id="icon-save" viewBox="0 0 24 24"><path d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/></symbol>
+        <symbol id="icon-trash" viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></symbol>
+    </svg>
+
+    <script>
+        const DEFAULT_ICON = "icon.png";
+        let state = { allLinks: [], sessions: [], groups: [] };
+
+        window.onload = () => { loadState(); if(state.sessions.length===0) createNewSession(); renderAll(); };
+
+        function loadState() {
+            const saved = localStorage.getItem('linkMasterV6');
+            if(saved) { state = JSON.parse(saved); state.sessions.forEach(s => {if(s.hidden===undefined)s.hidden=false;}); }
+        }
+        function saveState() { localStorage.setItem('linkMasterV6', JSON.stringify(state)); }
+
+        // --- EXPORT / RESTORE ---
+        function downloadFile(filename, content) {
+            const element = document.createElement('a');
+            element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(content));
+            element.setAttribute('download', filename);
+            document.body.appendChild(element); element.click(); document.body.removeChild(element);
+        }
+
+        function exportFullState() {
+            const date = new Date().toISOString().split('T')[0];
+            downloadFile(`linkmaster_backup_${date}.json`, JSON.stringify(state, null, 2));
+        }
+
+        function triggerRestore() { document.getElementById('restoreInput').click(); }
+
+        function handleRestoreFile(input) {
+            const file = input.files[0];
+            if(!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const restoredState = JSON.parse(e.target.result);
+                    if(restoredState.allLinks && restoredState.sessions) {
+                        if(confirm("This will overwrite your current links. Continue?")) {
+                            state = restoredState;
+                            saveState();
+                            location.reload();
+                        }
+                    } else { alert("Invalid Backup File"); }
+                } catch(err) { alert("Error reading file"); }
+            };
+            reader.readAsText(file);
+        }
+
+        function exportMainLinksTxt() {
+            const sessionLinkIds = new Set();
+            state.sessions.forEach(s => s.linkIds.forEach(id => sessionLinkIds.add(id)));
+            const mainLinks = state.allLinks.filter(l => !sessionLinkIds.has(l.id));
+            if(mainLinks.length === 0) return alert("No main links to export.");
+            downloadFile('main_links_only.txt', mainLinks.map(l => l.url).join('\n'));
+        }
+
+        function exportAllSessionsTxt() {
+            let content = "";
+            let hasLinks = false;
+            state.sessions.forEach(sess => {
+                const sLinks = sess.linkIds.map(id => state.allLinks.find(l=>l.id===id)).filter(l=>l);
+                if(sLinks.length > 0) {
+                    hasLinks = true;
+                    content += `--- SESSION: ${sess.name} ${sess.hidden?'(Hidden)':''} ---\n`;
+                    content += sLinks.map(l => l.url).join('\n');
+                    content += "\n\n";
+                }
+            });
+            if(!hasLinks) return alert("No session links to export.");
+            downloadFile('all_sessions_links.txt', content);
+        }
+
+        function exportSessionTxt(id) {
+            const sess = state.sessions.find(s => s.id === id);
+            if(!sess) return;
+            const links = sess.linkIds.map(id => state.allLinks.find(l=>l.id===id)).filter(l=>l);
+            if(links.length === 0) return alert("Empty session");
+            downloadFile(`${sess.name.replace(/[^a-z0-9]/gi,'_')}.txt`, links.map(l=>l.url).join('\n'));
+        }
+
+        // --- CORE LOGIC ---
+        function createNewSession() {
+            const now = new Date();
+            const time = now.toLocaleDateString('en-US',{month:'short',day:'2-digit'}) + " " + now.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+            state.sessions.unshift({ id: Date.now(), name: time, expanded: false, hidden: false, linkIds: [] });
+            saveState(); renderSessions();
+        }
+
+        function addLinks(text, sessionId = null) {
+            const urls = text.split(/\n|,|\s+/).filter(u => u.trim().length > 0);
+            if(urls.length === 0) return;
+            let target = state.sessions.find(s => s.id === sessionId);
+            urls.forEach(url => {
+                let clean = url.trim(); if(!clean.startsWith('http')) clean = 'https://'+clean;
+                try {
+                    const id = Date.now() + Math.random();
+                    const domain = new URL(clean).hostname;
+                    state.allLinks.unshift({ id: id, url: clean, domain: domain, watched: false, isNew: true, timestamp: Date.now() });
+                    if(target) { target.linkIds.unshift(id); target.expanded = true; }
+                } catch(e) {}
+            });
+            saveState(); renderAll();
+        }
+
+        function toggleWatch(id) {
+            const l = state.allLinks.find(x => x.id === id);
+            if(l) { l.watched = !l.watched; if(l.watched) l.isNew = false; }
+            saveState(); renderAll();
+        }
+
+        function deleteGlobalLink(id) {
+            state.allLinks = state.allLinks.filter(l => l.id !== id);
+            state.sessions.forEach(s => s.linkIds = s.linkIds.filter(lid => lid !== id));
+            state.groups.forEach(g => g.linkIds = g.linkIds.filter(lid => lid !== id));
+            saveState(); renderAll();
+        }
+
+        function removeDuplicates() {
+            if(!confirm("Remove duplicates?")) return;
+            const seen = new Set(); const unique = [];
+            [...state.allLinks].sort((a,b)=>b.timestamp-a.timestamp).forEach(l=>{
+                if(!seen.has(l.url)) { seen.add(l.url); unique.push(l); }
+            });
+            state.allLinks = unique;
+            const validIds = new Set(unique.map(l=>l.id));
+            state.sessions.forEach(s=>s.linkIds=s.linkIds.filter(id=>validIds.has(id)));
+            saveState(); renderAll();
+        }
+
+        function generateGroups() {
+            const size = parseInt(document.getElementById('groupSize').value)||2;
+            const hiddenIds = new Set(); state.sessions.forEach(s=>{if(s.hidden)s.linkIds.forEach(id=>hiddenIds.add(id))});
+            const ids = state.allLinks.filter(l=>!l.watched && !hiddenIds.has(l.id)).map(l=>l.id);
+            if(ids.length===0) return alert("No active links");
+            
+            for(let i=ids.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [ids[i],ids[j]]=[ids[j],ids[i]]; }
+            
+            state.groups=[];
+            for(let i=0; i<size; i++) state.groups.push({id:Date.now()+i, name:`Group ${i+1}`, expanded:false, linkIds:[]});
+            ids.forEach((id,i) => state.groups[i%size].linkIds.push(id));
+            state.groups = state.groups.filter(g=>g.linkIds.length>0);
+            saveState(); renderGroups(); switchView('groups');
+        }
+
+        function toggleAccordion(type, id) {
+            const item = type==='session' ? state.sessions.find(x=>x.id===id) : state.groups.find(x=>x.id===id);
+            if(item) { item.expanded = !item.expanded; saveState(); type==='session'?renderSessions():renderGroups(); }
+        }
+        
+        function showModal(title, desc, confirmCallback, showConfirmBtn = true) {
+            document.getElementById('modalTitle').innerText = title;
+            document.getElementById('modalDesc').innerText = desc;
+            document.getElementById('modalInput').style.display = 'none';
+            document.getElementById('modalTextarea').style.display = 'none';
+            const confirmBtn = document.getElementById('modalConfirmBtn');
+            confirmBtn.style.display = showConfirmBtn ? 'inline-block' : 'none';
+            confirmBtn.style.background = 'var(--danger)';
+            confirmBtn.style.borderColor = 'var(--danger)';
+            confirmBtn.innerText = 'Confirm';
+            confirmBtn.onclick = () => { confirmCallback(); closeModal(); };
+            document.getElementById('customModal').style.display = 'flex';
+        }
+
+        function showInputModal(title, placeholder, initialValue, isTextarea, onConfirm) {
+            document.getElementById('modalTitle').innerText = title;
+            document.getElementById('modalDesc').innerText = '';
+            const input = document.getElementById('modalInput');
+            const textarea = document.getElementById('modalTextarea');
+            
+            if (isTextarea) {
+                input.style.display = 'none';
+                textarea.style.display = 'block';
+                textarea.value = initialValue || '';
+                textarea.placeholder = placeholder || '';
+                setTimeout(() => textarea.focus(), 50);
+            } else {
+                textarea.style.display = 'none';
+                input.style.display = 'block';
+                input.value = initialValue || '';
+                input.placeholder = placeholder || '';
+                setTimeout(() => input.focus(), 50);
+            }
+
+            const confirmBtn = document.getElementById('modalConfirmBtn');
+            confirmBtn.style.display = 'inline-block';
+            confirmBtn.style.background = 'var(--accent)';
+            confirmBtn.style.borderColor = 'var(--accent)';
+            confirmBtn.innerText = 'Save';
+            
+            confirmBtn.onclick = () => {
+                const val = isTextarea ? textarea.value : input.value;
+                onConfirm(val);
+                closeModal();
+            };
+            
+            document.getElementById('customModal').style.display = 'flex';
+        }
+
+        function closeModal() {
+            document.getElementById('customModal').style.display = 'none';
+            const input = document.getElementById('modalInput');
+            input.style.display = 'none';
+            input.disabled = false;
+            input.style.opacity = '1';
+            document.getElementById('modalTextarea').style.display = 'none';
+            const customContent = document.getElementById('modalCustomContent');
+            if (customContent) {
+                customContent.style.display = 'none';
+                customContent.innerHTML = '';
+            }
+        }
+
+        function showSaveTabsModal(urlsText) {
+            document.getElementById('modalTitle').innerText = 'Save All Tabs';
+            document.getElementById('modalDesc').innerText = 'Save open tabs to a new session or select an existing session below:';
+            
+            const input = document.getElementById('modalInput');
+            const textarea = document.getElementById('modalTextarea');
+            const customContent = document.getElementById('modalCustomContent');
+            
+            textarea.style.display = 'none';
+            input.style.display = 'block';
+            input.disabled = false;
+            input.style.opacity = '1';
+            
+            const now = new Date();
+            const defaultTime = now.toLocaleDateString('en-US',{month:'short',day:'2-digit'}) + " " + now.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+            input.value = defaultTime;
+            input.placeholder = 'New Session Name...';
+            
+            let tableHTML = '';
+            if (state.sessions.length > 0) {
+                let rows = state.sessions.map(s => {
+                    const d = new Date(s.id);
+                    const createdStr = isNaN(d.getTime()) ? 'Existing' : d.toLocaleDateString('en-US',{month:'short',day:'2-digit'}) + " " + d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+                    return `
+                        <tr style="border-b:1px solid #27272a; color:#f4f4f5; font-size:0.8rem;">
+                            <td style="padding:6px 8px; text-align:center;">
+                                <input type="checkbox" class="save-tab-session-cb" data-id="${s.id}" style="accent-color:var(--accent); cursor:pointer;">
+                            </td>
+                            <td style="padding:6px 8px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:140px;">${s.name}</td>
+                            <td style="padding:6px 8px; text-align:center; color:#a1a1aa;">${s.linkIds ? s.linkIds.length : 0}</td>
+                            <td style="padding:6px 8px; text-align:right; color:#71717a; font-size:0.75rem; white-space:nowrap;">${createdStr}</td>
+                        </tr>
+                    `;
+                }).join('');
+                
+                tableHTML = `
+                    <div style="margin-top:12px; margin-bottom:6px; font-size:0.8rem; font-weight:600; color:#a1a1aa;">Or select an existing session:</div>
+                    <div style="max-height:160px; overflow-y:auto; border:1px solid #27272a; border-radius:8px; background:#09090b;">
+                        <table style="width:100%; border-collapse:collapse; text-align:left;">
+                            <thead>
+                                <tr style="border-b:1px solid #27272a; background:#121215; color:#a1a1aa; font-size:0.75rem;">
+                                    <th style="padding:6px 8px; width:30px; text-align:center;">Select</th>
+                                    <th style="padding:6px 8px;">Session</th>
+                                    <th style="padding:6px 8px; width:45px; text-align:center;">Links</th>
+                                    <th style="padding:6px 8px; width:95px; text-align:right;">Created</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${rows}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            } else {
+                tableHTML = `<div style="margin-top:10px; font-size:0.85rem; color:#71717a; text-align:center;">No existing sessions found.</div>`;
+            }
+            
+            customContent.innerHTML = tableHTML;
+            customContent.style.display = 'block';
+
+            const cbs = customContent.querySelectorAll('.save-tab-session-cb');
+            cbs.forEach(cb => {
+                cb.addEventListener('change', (e) => {
+                    if (e.target.checked) {
+                        cbs.forEach(other => { if (other !== e.target) other.checked = false; });
+                        input.disabled = true;
+                        input.style.opacity = '0.5';
+                    } else {
+                        input.disabled = false;
+                        input.style.opacity = '1';
+                    }
+                });
+            });
+
+            const confirmBtn = document.getElementById('modalConfirmBtn');
+            confirmBtn.style.display = 'inline-block';
+            confirmBtn.style.background = 'var(--accent)';
+            confirmBtn.style.borderColor = 'var(--accent)';
+            confirmBtn.innerText = 'Save Tabs';
+            
+            confirmBtn.onclick = () => {
+                const selectedCb = customContent.querySelector('.save-tab-session-cb:checked');
+                let targetSessionId = null;
+                
+                if (selectedCb) {
+                    targetSessionId = parseFloat(selectedCb.getAttribute('data-id'));
+                } else {
+                    const newName = input.value.trim() || defaultTime;
+                    targetSessionId = Date.now();
+                    state.sessions.unshift({ id: targetSessionId, name: newName, expanded: true, hidden: false, linkIds: [] });
+                }
+                
+                addLinks(urlsText, targetSessionId);
+                closeModal();
+                switchView('sessions');
+                renderSessions();
+            };
+
+            document.getElementById('customModal').style.display = 'flex';
+        }
+
+        function confirmDeleteGroup(id) {
+            showModal('Delete Group?', 'Are you sure you want to permanently delete this group?', () => {
+                state.groups = state.groups.filter(g => g.id !== id);
+                saveState(); renderGroups();
+            });
+        }
+        function confirmDeleteSession(id) {
+            showModal('Delete Session?', 'Are you sure you want to delete this session and permanently remove all links that belong exclusively to it?', () => {
+                const session = state.sessions.find(s => s.id === id);
+                if (!session) return;
+                const linkIds = session.linkIds;
+                state.sessions = state.sessions.filter(s => s.id !== id);
+                
+                const otherSessionLinkIds = new Set();
+                state.sessions.forEach(s => s.linkIds.forEach(lid => otherSessionLinkIds.add(lid)));
+                
+                const idsToRemove = linkIds.filter(lid => !otherSessionLinkIds.has(lid));
+                state.allLinks = state.allLinks.filter(l => !idsToRemove.includes(l.id));
+                state.groups.forEach(g => { g.linkIds = g.linkIds.filter(lid => !idsToRemove.includes(lid)); });
+                
+                if(state.sessions.length === 0) createNewSession();
+                saveState(); renderAll();
+            });
+        }
+
+        function editSessionName(id) {
+            const s = state.sessions.find(x => x.id === id);
+            if (!s) return;
+            showInputModal('Rename Session', 'Session name...', s.name, false, (val) => {
+                if (val && val.trim()) {
+                    s.name = val.trim();
+                    saveState();
+                    renderSessions();
+                }
+            });
+        }
+
+        function confirmDeleteSessionLink(sessionId, linkId) {
+            showModal('Delete Link?', 'Do you really want to delete this link?', () => {
+                const session = state.sessions.find(s => s.id === sessionId);
+                if (session) session.linkIds = session.linkIds.filter(id => id !== linkId);
+                deleteGlobalLink(linkId);
+            });
+        }
+
+        let draggedLink = null;
+        function handleDragStart(e, sessionId, linkId) {
+            draggedLink = { sessionId, linkId };
+            e.dataTransfer.effectAllowed = 'move';
+        }
+        function handleDragOver(e) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }
+        function handleDrop(e, targetSessionId) {
+            e.preventDefault();
+            if (!draggedLink || draggedLink.sessionId === targetSessionId) return;
+            const sourceSession = state.sessions.find(s => s.id === draggedLink.sessionId);
+            const targetSession = state.sessions.find(s => s.id === targetSessionId);
+            if(sourceSession && targetSession) {
+                sourceSession.linkIds = sourceSession.linkIds.filter(id => id !== draggedLink.linkId);
+                if(!targetSession.linkIds.includes(draggedLink.linkId)) {
+                    targetSession.linkIds.unshift(draggedLink.linkId);
+                }
+                saveState(); renderSessions();
+            }
+            draggedLink = null;
+        }
+
+        function updateMergeUI() {
+            const checked = document.querySelectorAll('.session-merge-cb:checked');
+            const countEl = document.getElementById('mergeCount');
+            if (countEl) countEl.innerText = checked.length;
+        }
+
+        function confirmMergeSessions() {
+            const checked = Array.from(document.querySelectorAll('.session-merge-cb:checked')).map(cb => parseInt(cb.dataset.id));
+            if(checked.length < 2) {
+                showModal('Merge Sessions', 'Please check at least 2 sessions to merge.', () => {}, false);
+                return;
+            }
+            showModal('Merge Sessions?', `Merge ${checked.length} selected sessions into a single session?`, () => {
+                const mergedLinkIds = new Set();
+                checked.forEach(id => {
+                    const session = state.sessions.find(s => s.id === id);
+                    if(session) session.linkIds.forEach(linkId => mergedLinkIds.add(linkId));
+                });
+                state.sessions = state.sessions.filter(s => !checked.includes(s.id));
+                const newId = Date.now();
+                state.sessions.unshift({ id: newId, name: "Merged Session", expanded: true, hidden: false, linkIds: Array.from(mergedLinkIds) });
+                saveState();
+                renderSessions();
+                updateMergeUI();
+            });
+        }
+
+        function toggleSessionVisibility(id) {
+            const s = state.sessions.find(x=>x.id===id);
+            s.hidden = !s.hidden; saveState(); renderAll();
+        }
+
+        function openContainerLinks(ids) {
+            const urls = ids.map(id=>state.allLinks.find(l=>l.id===id)).filter(l=>l&&!l.watched).map(l=>l.url);
+            if(urls.length===0) return alert("No active links");
+            if(urls.length>10 && !confirm(`Open ${urls.length} tabs?`)) return;
+            urls.forEach(u=>window.open(u,'_blank'));
+        }
+
+        // --- RENDER ---
+        function renderAll() { renderHome(); renderSessions(); renderGroups(); renderExport(); }
+
+        function renderHome() {
+            const container = document.getElementById('stackContainer');
+            const counter = document.getElementById('stackCounter');
+            const sort = document.getElementById('sortMode').value;
+            container.innerHTML = '';
+
+            const hiddenIds = new Set(); state.sessions.forEach(s=>{if(s.hidden)s.linkIds.forEach(id=>hiddenIds.add(id))});
+            const visible = state.allLinks.filter(l=>!hiddenIds.has(l.id));
+            
+            counter.innerText = `${visible.filter(l=>!l.watched).length} active / ${visible.length}`;
+            if(visible.length===0) return container.innerHTML='<div style="padding:20px;text-align:center;color:#555">No visible links</div>';
+
+            let sorted = [...visible];
+            if(sort==='new') sorted.sort((a,b)=>b.timestamp-a.timestamp);
+            else if(sort==='checked') sorted.sort((a,b)=>b.watched-a.watched);
+            else if(sort==='unchecked') sorted.sort((a,b)=>a.watched-b.watched);
+            else if(sort==='random') for(let i=sorted.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[sorted[i],sorted[j]]=[sorted[j],sorted[i]];}
+
+            sorted.forEach(l => {
+                const fav = (l.domain&&l.domain.includes('.')) ? `https://icons.duckduckgo.com/ip3/${l.domain}.ico` : DEFAULT_ICON;
+                const div = document.createElement('div');
+                div.className = `stack-row ${l.watched?'watched':''}`;
+                div.innerHTML = `
+                    <input type="checkbox" class="checkbox-custom" ${l.watched?'checked':''} onchange="toggleWatch(${l.id})">
+                    <img src="${fav}" class="stack-favicon" onerror="this.onerror=null;this.src='${DEFAULT_ICON}'">
+                    <a href="${l.url}" target="_blank" class="stack-link" onclick="toggleWatch(${l.id})">${l.url}</a>
+                    ${(l.isNew&&!l.watched)?`<span class="badge-new" onclick="toggleWatch(${l.id})">NEW</span>`:''}
+                    <button class="mini-btn btn-danger" onclick="deleteGlobalLink(${l.id})">×</button>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        function renderSessions() {
+            const c = document.getElementById('sessionsContainer'); c.innerHTML='';
+            state.sessions.forEach(s => {
+                const links = s.linkIds.map(id=>state.allLinks.find(l=>l.id===id)).filter(l=>l);
+                const active = links.filter(l=>!l.watched).length;
+                const div = document.createElement('div');
+                div.className = `accordion-item ${s.expanded?'expanded':''} ${s.hidden?'is-hidden':''}`;
+                div.setAttribute('ondragover', 'handleDragOver(event)');
+                div.setAttribute('ondrop', `handleDrop(event, ${s.id})`);
+                div.innerHTML = `
+                    <div class="accordion-header session-header-layout" onclick="toggleAccordion('session',${s.id})">
+                        <div class="header-left">
+                            <input type="checkbox" class="session-merge-cb checkbox-custom" data-id="${s.id}" onclick="event.stopPropagation();updateMergeUI()" style="margin-right:10px;">
+                            <svg class="arrow-icon"><use href="#icon-arrow"></use></svg>
+                            <span class="header-title">${s.name} ${s.hidden?'<small style="color:var(--warning)">[HIDDEN]</small>':''}</span>
+                            <span class="header-meta">(${active})</span>
+                        </div>
+                        <div class="header-actions">
+                            <button class="mini-btn btn-save" onclick="event.stopPropagation();exportSessionTxt(${s.id})"><svg class="icon-svg"><use href="#icon-save"></use></svg></button>
+                            <button class="mini-btn btn-hide" onclick="event.stopPropagation();toggleSessionVisibility(${s.id})"><svg class="icon-svg"><use href="#${s.hidden?'icon-eye-off':'icon-eye'}"></use></svg></button>
+                            <button class="mini-btn btn-open-all" onclick="event.stopPropagation();openContainerLinks([${s.linkIds}])">Open</button>
+                            <button class="mini-btn" onclick="event.stopPropagation();editSessionName(${s.id}, this.closest('.accordion-header'))">Edit</button>
+                            <button class="mini-btn btn-danger" onclick="event.stopPropagation();confirmDeleteSession(${s.id})">Del</button>
+                        </div>
+                    </div>
+                    <div class="accordion-content"><div class="accordion-inner-padding"><div class="cards-grid" ondragover="handleDragOver(event)" ondrop="handleDrop(event, ${s.id})">
+                        <div class="link-card" style="border-style:dashed; border-color:#333; justify-content:center; opacity:0.6;" onclick="promptAdd(${s.id})"><div>+ Add Link</div></div>
+                        ${links.map(l=>createCardHTML(l, s.id)).join('')}
+                    </div></div></div>
+                `;
+                c.appendChild(div);
+            });
+        }
+
+        function renderGroups() {
+            const c = document.getElementById('groupsContainer'); c.innerHTML='';
+            
+            const hiddenIds = new Set(); state.sessions.forEach(s=>{if(s.hidden)s.linkIds.forEach(id=>hiddenIds.add(id))});
+            const vGroups = state.groups.map(g=>({...g, linkIds:g.linkIds.filter(id=>!hiddenIds.has(id))})).filter(g=>g.linkIds.length>0);
+
+            if(vGroups.length===0) return c.innerHTML='<div style="text-align:center;color:#555;padding:20px">No visible groups</div>';
+            
+            vGroups.forEach(g => {
+                const links = g.linkIds.map(id=>state.allLinks.find(l=>l.id===id)).filter(l=>l);
+                const div = document.createElement('div');
+                div.className = `accordion-item ${state.groups.find(x=>x.id===g.id).expanded?'expanded':''}`;
+                div.innerHTML = `
+                    <div class="accordion-header" onclick="toggleAccordion('group',${g.id})">
+                        <div class="header-left"><svg class="arrow-icon"><use href="#icon-arrow"></use></svg><span class="header-title">${g.name}</span></div>
+                        <div class="header-actions">
+                            <button class="mini-btn btn-open-all" onclick="event.stopPropagation();openContainerLinks([${g.linkIds}])">Open All</button>
+                            <button class="mini-btn btn-danger btn-delete-group" onclick="event.stopPropagation();confirmDeleteGroup(${g.id})">Del</button>
+                        </div>
+                    </div>
+                    <div class="accordion-content"><div class="accordion-inner-padding"><div class="cards-grid">${links.map(l=>createCardHTML(l)).join('')}</div></div></div>
+                `;
+                c.appendChild(div);
+            });
+        }
+
+        function renderExport() {
+            const l = document.getElementById('exportSessionList'); l.innerHTML='';
+            state.sessions.forEach(s => {
+                const row = document.createElement('div'); row.className='export-row';
+                row.innerHTML = `<span class="export-name">${s.name}</span><div style="display:flex;align-items:center;"><span class="export-count">${s.linkIds.length}</span><button class="mini-btn" onclick="exportSessionTxt(${s.id})">.txt</button></div>`;
+                l.appendChild(row);
+            });
+        }
+
+        function createCardHTML(l, sessionId = null) {
+            const fav = (l.domain&&l.domain.includes('.')) ? `https://icons.duckduckgo.com/ip3/${l.domain}.ico` : DEFAULT_ICON;
+            const deleteBtn = sessionId ? `<button class="mini-btn btn-danger btn-delete-group" onclick="event.stopPropagation();confirmDeleteSessionLink(${sessionId}, ${l.id})" title="Delete link"><svg class="icon-svg" style="width:13px; height:13px;"><use href="#icon-trash"></use></svg></button>` : '';
+            return `
+                <div class="link-card ${l.watched?'watched':''}" onmouseup="cardClick(event,'${l.url}')" ${sessionId ? `draggable="true" ondragstart="handleDragStart(event, ${sessionId}, ${l.id})"` : ''}>
+                    <div class="card-icon"><img src="${fav}" onerror="this.onerror=null;this.src='${DEFAULT_ICON}'"></div>
+                    <div class="card-info"><div class="card-title">${l.domain.toUpperCase()}</div><div class="card-desc">${l.url}</div></div>
+                    <div class="card-actions">
+                        ${deleteBtn}
+                        <button class="mini-btn ${l.watched?'':'primary'}" onclick="event.stopPropagation();toggleWatch(${l.id})">${l.watched?'Undo':'Done'}</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function switchView(v) {
+            document.querySelectorAll('main').forEach(e=>e.classList.remove('active-view'));
+            document.querySelectorAll('.nav-item').forEach(e=>e.classList.remove('active'));
+            document.getElementById(`view-${v}`).classList.add('active-view');
+            const m={'home':0,'sessions':1,'groups':2,'export':3};
+            if(m[v]!==undefined) document.querySelectorAll('.nav-item')[m[v]].classList.add('active');
+        }
+
+        function handleHomePaste(){ const b=document.getElementById('homePaste'); if(b.value.trim()){addLinks(b.value);b.value='';} }
+        function promptAdd(sid){
+            const session = state.sessions.find(s => s.id === sid);
+            const sessionName = session ? session.name : 'Session';
+            showInputModal(`Add Links to ${sessionName}`, 'Paste URLs here (one per line)...', '', true, (val) => {
+                if (val && val.trim()) addLinks(val, sid);
+            });
+        }
+        function resetApp(){ if(confirm("Factory Reset?")){ state={allLinks:[],sessions:[],groups:[]}; createNewSession(); location.reload(); } }
+        function cardClick(e,u){ if(e.target.tagName==='BUTTON'||e.target.closest('button'))return; if(e.button===0||e.button===1){e.preventDefault();window.open(u,'_blank');} }
+    </script>
+</body>
+</html>
