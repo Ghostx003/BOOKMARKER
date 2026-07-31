@@ -616,13 +616,42 @@
         function toggleSessionVisibility(id) {
             const s = state.sessions.find(x=>x.id===id);
             s.hidden = !s.hidden; saveState(); renderAll();
-        }
-
         function openContainerLinks(ids) {
             const urls = ids.map(id=>state.allLinks.find(l=>l.id===id)).filter(l=>l&&!l.watched).map(l=>l.url);
             if(urls.length===0) return alert("No active links");
             if(urls.length>10 && !confirm(`Open ${urls.length} tabs?`)) return;
             urls.forEach(u=>window.open(u,'_blank'));
+        }
+
+        function closeContainerLinks(ids) {
+            const urls = ids.map(id => state.allLinks.find(l => l.id === id)).filter(l => l).map(l => l.url);
+            if (urls.length === 0) return showModal('Close Links', 'No links found in this session/group.', () => {}, false);
+            
+            if (typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.query && chrome.tabs.remove) {
+                chrome.tabs.query({ currentWindow: true }, (tabs) => {
+                    const tabsToClose = tabs.filter(t => t.url && urls.some(u => isUrlMatch(t.url, u)));
+                    if (tabsToClose.length === 0) {
+                        showModal('Close Links', 'No open browser tabs matching links in this session/group.', () => {}, false);
+                        return;
+                    }
+                    const tabIds = tabsToClose.map(t => t.id);
+                    chrome.tabs.remove(tabIds);
+                });
+            } else {
+                showModal('Close Links', 'Tab management requires browser extension context.', () => {}, false);
+            }
+        }
+
+        function isUrlMatch(url1, url2) {
+            if (!url1 || !url2) return false;
+            if (url1 === url2) return true;
+            try {
+                const u1 = new URL(url1);
+                const u2 = new URL(url2);
+                return u1.origin + u1.pathname === u2.origin + u2.pathname;
+            } catch(e) {
+                return url1.includes(url2) || url2.includes(url1);
+            }
         }
 
         // --- RENDER ---
@@ -651,7 +680,7 @@
                 const div = document.createElement('div');
                 div.className = `stack-row ${l.watched?'watched':''}`;
                 div.innerHTML = `
-                    <input type="checkbox" class="checkbox-custom" ${l.watched?'checked':''} onchange="toggleWatch(${l.id})">
+                    <input type="checkbox" class="checkbox-custom" ${l.watched?'checked':''} onclick="toggleWatch(${l.id})">
                     <img src="${fav}" class="stack-favicon" onerror="this.onerror=null;this.src='${DEFAULT_ICON}'">
                     <a href="${l.url}" target="_blank" class="stack-link" onclick="toggleWatch(${l.id})">${l.url}</a>
                     ${(l.isNew&&!l.watched)?`<span class="badge-new" onclick="toggleWatch(${l.id})">NEW</span>`:''}
@@ -681,6 +710,7 @@
                         <div class="header-actions">
                             <button class="mini-btn btn-save" onclick="event.stopPropagation();exportSessionTxt(${s.id})"><svg class="icon-svg"><use href="#icon-save"></use></svg></button>
                             <button class="mini-btn btn-hide" onclick="event.stopPropagation();toggleSessionVisibility(${s.id})"><svg class="icon-svg"><use href="#${s.hidden?'icon-eye-off':'icon-eye'}"></use></svg></button>
+                            <button class="mini-btn btn-danger" onclick="event.stopPropagation();closeContainerLinks([${s.linkIds}])">Close</button>
                             <button class="mini-btn btn-open-all" onclick="event.stopPropagation();openContainerLinks([${s.linkIds}])">Open</button>
                             <button class="mini-btn" onclick="event.stopPropagation();editSessionName(${s.id}, this.closest('.accordion-header'))">Edit</button>
                             <button class="mini-btn btn-danger" onclick="event.stopPropagation();confirmDeleteSession(${s.id})">Del</button>
@@ -711,6 +741,7 @@
                     <div class="accordion-header" onclick="toggleAccordion('group',${g.id})">
                         <div class="header-left"><svg class="arrow-icon"><use href="#icon-arrow"></use></svg><span class="header-title">${g.name}</span></div>
                         <div class="header-actions">
+                            <button class="mini-btn btn-danger" onclick="event.stopPropagation();closeContainerLinks([${g.linkIds}])">Close</button>
                             <button class="mini-btn btn-open-all" onclick="event.stopPropagation();openContainerLinks([${g.linkIds}])">Open All</button>
                             <button class="mini-btn btn-danger btn-delete-group" onclick="event.stopPropagation();confirmDeleteGroup(${g.id})">Del</button>
                         </div>

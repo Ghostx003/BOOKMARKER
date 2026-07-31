@@ -77,6 +77,7 @@ document.addEventListener('click', (e) => {
         case 'toggleAccordionGroup': toggleAccordion('group', id); break;
         case 'exportSessionTxt': e.stopPropagation(); exportSessionTxt(id); break;
         case 'toggleSessionVisibility': e.stopPropagation(); toggleSessionVisibility(id); break;
+        case 'closeContainerLinks': e.stopPropagation(); closeContainerLinks(ids); break;
         case 'openContainerLinks': e.stopPropagation(); openContainerLinks(ids); break;
         case 'renameSession': e.stopPropagation(); editSessionName(id, actionEl.closest('.accordion-header')); break;
         case 'deleteSession': e.stopPropagation(); confirmDeleteSession(id); break;
@@ -641,6 +642,37 @@ function openContainerLinks(ids) {
     urls.forEach(u=>chrome.tabs.create({ url: u, active: false }));
 }
 
+function closeContainerLinks(ids) {
+    const urls = ids.map(id => state.allLinks.find(l => l.id === id)).filter(l => l).map(l => l.url);
+    if (urls.length === 0) return showModal('Close Links', 'No links found in this container.', () => {}, false);
+    
+    if (typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.query && chrome.tabs.remove) {
+        chrome.tabs.query({ currentWindow: true }, (tabs) => {
+            const tabsToClose = tabs.filter(t => t.url && urls.some(u => isUrlMatch(t.url, u)));
+            if (tabsToClose.length === 0) {
+                showModal('Close Links', 'No open browser tabs matching links in this session/group.', () => {}, false);
+                return;
+            }
+            const tabIds = tabsToClose.map(t => t.id);
+            chrome.tabs.remove(tabIds);
+        });
+    } else {
+        showModal('Close Links', 'Tab management requires browser extension context.', () => {}, false);
+    }
+}
+
+function isUrlMatch(url1, url2) {
+    if (!url1 || !url2) return false;
+    if (url1 === url2) return true;
+    try {
+        const u1 = new URL(url1);
+        const u2 = new URL(url2);
+        return u1.origin + u1.pathname === u2.origin + u2.pathname;
+    } catch(e) {
+        return url1.includes(url2) || url2.includes(url1);
+    }
+}
+
 function renderAll() { renderHome(); renderSessions(); renderGroups(); renderExport(); }
 
 function renderHome() {
@@ -696,6 +728,7 @@ function renderSessions() {
                 <div class="header-actions">
                     <button class="mini-btn btn-save" data-action="exportSessionTxt" data-id="${s.id}"><svg class="icon-svg"><use href="#icon-save"></use></svg></button>
                     <button class="mini-btn btn-hide" data-action="toggleSessionVisibility" data-id="${s.id}"><svg class="icon-svg"><use href="#${s.hidden?'icon-eye-off':'icon-eye'}"></use></svg></button>
+                    <button class="mini-btn btn-danger" data-action="closeContainerLinks" data-ids="${s.linkIds.join(',')}">Close</button>
                     <button class="mini-btn btn-open-all" data-action="openContainerLinks" data-ids="${s.linkIds.join(',')}">Open</button>
                     <button class="mini-btn" data-action="renameSession" data-id="${s.id}">Edit</button>
                     <button class="mini-btn btn-danger" data-action="deleteSession" data-id="${s.id}">Del</button>
@@ -726,6 +759,7 @@ function renderGroups() {
             <div class="accordion-header" data-action="toggleAccordionGroup" data-id="${g.id}">
                 <div class="header-left"><svg class="arrow-icon"><use href="#icon-arrow"></use></svg><span class="header-title">${g.name}</span></div>
                 <div class="header-actions">
+                    <button class="mini-btn btn-danger" data-action="closeContainerLinks" data-ids="${g.linkIds.join(',')}">Close</button>
                     <button class="mini-btn btn-open-all" data-action="openContainerLinks" data-ids="${g.linkIds.join(',')}">Open All</button>
                     <button class="mini-btn btn-danger btn-delete-group" data-action="deleteGroup" data-id="${g.id}">Del</button>
                 </div>
