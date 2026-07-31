@@ -35,18 +35,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Save All Tabs specific
     document.getElementById('btnSaveTabs').addEventListener('click', async () => {
-        const tabs = await chrome.tabs.query({ currentWindow: true });
-        const urls = tabs
-            .map(t => t.url)
-            .filter(u => u && !u.startsWith('chrome://') && !u.startsWith('edge://') && !u.startsWith('about:'));
+        let tabsList = [];
+        if (typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.query) {
+            const tabs = await chrome.tabs.query({ currentWindow: true });
+            tabsList = tabs.filter(t => t.url && !t.url.startsWith('chrome://') && !t.url.startsWith('edge://') && !t.url.startsWith('about:'));
+        }
             
-        if (urls.length === 0) {
-            alert('No valid tabs to save.');
-            return;
+        if (tabsList.length === 0) {
+            const dummyUrl = window.location.href;
+            tabsList = [{ id: null, url: dummyUrl, title: document.title || 'Current Page', favIconUrl: 'icon.png' }];
         }
         
-        const urlsText = urls.join('\n');
-        showSaveTabsModal(urlsText);
+        showSaveTabsModal(tabsList);
     });
 
     loadState(); 
@@ -199,64 +199,107 @@ function exportSessionTxt(id) {
     downloadFile(`${sess.name.replace(/[^a-z0-9]/gi,'_')}.txt`, links.map(l=>l.url).join('\n'));
 }
 
-function createNewSession() {
-    const now = new Date();
-    const time = now.toLocaleDateString('en-US',{month:'short',day:'2-digit'}) + " " + now.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
-    state.sessions.unshift({ id: Date.now(), name: time, expanded: false, hidden: false, linkIds: [] });
-    saveState(); renderSessions();
+function addLinks(text, sessionId = null) {
+    const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    if (lines.length === 0) return;
+
+    let addedIds = [];
+    lines.forEach(rawUrl => {
+        let cleanUrl = rawUrl;
+        if (!cleanUrl.match(/^https?:\/\//i)) cleanUrl = 'https://' + cleanUrl;
+        
+        let domain = 'unknown';
+        try { domain = new URL(cleanUrl).hostname.replace(/^www\./, ''); } catch (e) {}
+
+        const newLink = {
+            id: Date.now() + Math.random(),
+            url: cleanUrl,
+            domain: domain,
+            watched: false,
+            timestamp: Date.now(),
+            isNew: true
+        };
+
+        state.allLinks.unshift(newLink);
+        addedIds.push(newLink.id);
+    });
+
+    if (sessionId) {
+        const targetSession = state.sessions.find(s => s.id === sessionId);
+        if (targetSession) {
+            targetSession.linkIds.unshift(...addedIds);
+        }
+    }
+
+    saveState();
+    renderAll();
 }
 
-function addLinks(text, sessionId = null) {
-    const urls = text.split(/\n|,|\s+/).filter(u => u.trim().length > 0);
-    if(urls.length === 0) return;
-    let target = state.sessions.find(s => s.id === sessionId);
-    urls.forEach(url => {
-        let clean = url.trim(); if(!clean.startsWith('http')) clean = 'https://'+clean;
-        try {
-            const id = Date.now() + Math.random();
-            const domain = new URL(clean).hostname;
-            state.allLinks.unshift({ id: id, url: clean, domain: domain, watched: false, isNew: true, timestamp: Date.now() });
-            if(target) { target.linkIds.unshift(id); target.expanded = true; }
-        } catch(e) {}
+function createNewSession() {
+    showInputModal('Create New Session', 'Session Name...', '', false, (name) => {
+        if(name && name.trim()) {
+            state.sessions.unshift({ id: Date.now(), name: name.trim(), expanded: true, hidden: false, linkIds: [] });
+            saveState(); renderSessions();
+        }
     });
-    saveState(); renderAll();
 }
 
 function toggleWatch(id) {
-    const l = state.allLinks.find(x => x.id === id);
-    if(l) { l.watched = !l.watched; if(l.watched) l.isNew = false; }
-    saveState(); renderAll();
+    const link = state.allLinks.find(l => l.id === id);
+    if(link) {
+        link.watched = !link.watched;
+        link.isNew = false;
+        saveState();
+        renderAll();
+    }
 }
 
 function deleteGlobalLink(id) {
-            state.allLinks = state.allLinks.filter(l => l.id !== id);
-            state.sessions.forEach(s => s.linkIds = s.linkIds.filter(lid => lid !== id));
-            state.groups.forEach(g => g.linkIds = g.linkIds.filter(lid => lid !== id));
-            saveState(); renderAll();
-        }
-
-function removeDuplicates() {
-    if(!confirm("Remove duplicates?")) return;
-    const seen = new Set(); const unique = [];
-    [...state.allLinks].sort((a,b)=>b.timestamp-a.timestamp).forEach(l=>{
-        if(!seen.has(l.url)) { seen.add(l.url); unique.push(l); }
-    });
-    state.allLinks = unique;
-    const validIds = new Set(unique.map(l=>l.id));
-    state.sessions.forEach(s=>s.linkIds=s.linkIds.filter(id=>validIds.has(id)));
+    state.allLinks = state.allLinks.filter(l => l.id !== id);
+    state.sessions.forEach(s => s.linkIds = s.linkIds.filter(lid => lid !== id));
+    state.groups.forEach(g => g.linkIds = g.linkIds.filter(lid => lid !== id));
     saveState(); renderAll();
 }
 
+function removeDuplicates() {
+    const seen = new Set();
+    const unique = [];
+    state.allLinks.forEach(l => {
+        if (!seen.has(l.url)) {
+            seen.add(l.url);
+            unique.push(l);
+        }
+    });
+    const removedCount = state.allLinks.length - unique.length;
+    state.allLinks = unique;
+    const validIds = new Set(unique.map(l => l.id));
+    state.sessions.forEach(s => s.linkIds = s.linkIds.filter(id => validIds.has(id)));
+    state.groups.forEach(g => g.linkIds = g.linkIds.filter(id => validIds.has(id)));
+    saveState();
+    renderAll();
+    showModal('Cleanup Complete', `Removed ${removedCount} duplicate links.`, () => {}, false);
+}
+
 function generateGroups() {
-    const size = parseInt(document.getElementById('groupSize').value)||2;
+    const sizeInput = document.getElementById('groupSize');
+    const size = parseInt(sizeInput.value) || 2;
     const hiddenIds = new Set(); state.sessions.forEach(s=>{if(s.hidden)s.linkIds.forEach(id=>hiddenIds.add(id))});
-    const ids = state.allLinks.filter(l=>!l.watched && !hiddenIds.has(l.id)).map(l=>l.id);
-    if(ids.length===0) return alert("No active links");
-    
-    for(let i=ids.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [ids[i],ids[j]]=[ids[j],ids[i]]; }
-    
-    state.groups=[];
-    for(let i=0; i<size; i++) state.groups.push({id:Date.now()+i, name:`Group ${i+1}`, expanded:false, linkIds:[]});
+    const unwatched = state.allLinks.filter(l => !l.watched && !hiddenIds.has(l.id));
+
+    if (unwatched.length === 0) return showModal('Shuffle Groups', 'No unwatched visible links available to group.', () => {}, false);
+
+    const shuffled = [...unwatched];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+
+    const ids = shuffled.map(l => l.id);
+    const numGroups = Math.ceil(ids.length / size);
+    state.groups = [];
+    for (let i = 0; i < numGroups; i++) {
+        state.groups.push({ id: Date.now() + i, name: `Group ${i + 1}`, expanded: true, linkIds: [] });
+    }
     ids.forEach((id,i) => state.groups[i%size].linkIds.push(id));
     state.groups = state.groups.filter(g=>g.linkIds.length>0);
     saveState(); renderGroups(); switchView('groups');
@@ -323,6 +366,8 @@ function closeModal() {
     input.disabled = false;
     input.style.opacity = '1';
     document.getElementById('modalTextarea').style.display = 'none';
+    const cancelBtn = document.getElementById('modalCancelBtn');
+    if (cancelBtn) cancelBtn.innerText = 'Cancel';
     const customContent = document.getElementById('modalCustomContent');
     if (customContent) {
         customContent.style.display = 'none';
@@ -330,7 +375,7 @@ function closeModal() {
     }
 }
 
-function showSaveTabsModal(urlsText) {
+function showSaveTabsModal(tabsList) {
     document.getElementById('modalTitle').innerText = 'Save All Tabs';
     document.getElementById('modalDesc').innerText = 'Save open tabs to a new session or select an existing session below:';
     
@@ -367,7 +412,7 @@ function showSaveTabsModal(urlsText) {
         
         tableHTML = `
             <div style="margin-top:12px; margin-bottom:6px; font-size:0.8rem; font-weight:600; color:#a1a1aa;">Or select an existing session:</div>
-            <div style="max-height:160px; overflow-y:auto; border:1px solid #27272a; border-radius:8px; background:#09090b;">
+            <div style="max-height:130px; overflow-y:auto; border:1px solid #27272a; border-radius:8px; background:#09090b; margin-bottom:14px;">
                 <table style="width:100%; border-collapse:collapse; text-align:left;">
                     <thead>
                         <tr style="border-b:1px solid #27272a; background:#121215; color:#a1a1aa; font-size:0.75rem;">
@@ -384,11 +429,51 @@ function showSaveTabsModal(urlsText) {
             </div>
         `;
     } else {
-        tableHTML = `<div style="margin-top:10px; font-size:0.85rem; color:#71717a; text-align:center;">No existing sessions found.</div>`;
+        tableHTML = `<div style="margin-top:10px; margin-bottom:14px; font-size:0.85rem; color:#71717a; text-align:center;">No existing sessions found.</div>`;
     }
     
-    customContent.innerHTML = tableHTML;
+    // LIST OF ALL TABS BOX
+    let tabRows = tabsList.map(t => {
+        let domain = 'unknown';
+        try { domain = new URL(t.url).hostname.replace(/^www\./, ''); } catch(e){}
+        const fav = (domain && domain.includes('.')) ? `https://icons.duckduckgo.com/ip3/${domain}.ico` : (t.favIconUrl || DEFAULT_ICON);
+        const titleText = t.title || domain || t.url;
+        
+        return `
+            <div style="display:flex; align-items:center; gap:8px; padding:6px 8px; border-bottom:1px solid #27272a; background:#121215;">
+                <input type="checkbox" class="save-tab-item-cb" data-tab-id="${t.id || ''}" data-url="${t.url}" checked style="accent-color:var(--accent); cursor:pointer;">
+                <img src="${fav}" style="width:16px; height:16px; border-radius:4px; object-fit:contain;" onerror="this.onerror=null;this.src='${DEFAULT_ICON}'">
+                <div style="flex-grow:1; overflow:hidden; text-align:left;">
+                    <div style="font-size:0.78rem; font-weight:600; color:#f4f4f5; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${titleText}</div>
+                    <div style="font-size:0.7rem; color:#a1a1aa; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${t.url}</div>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    const tabsBoxHTML = `
+        <div style="margin-top:6px; margin-bottom:6px; display:flex; justify-content:space-between; align-items:center;">
+            <div style="font-size:0.8rem; font-weight:600; color:#a1a1aa;">List of all tabs:</div>
+            <label style="font-size:0.75rem; color:#8b5cf6; cursor:pointer; user-select:none;">
+                <input type="checkbox" id="toggleAllSaveTabs" checked style="accent-color:var(--accent); vertical-align:middle; margin-right:4px;"> Select All
+            </label>
+        </div>
+        <div style="max-height:160px; overflow-y:auto; border:1px solid #27272a; border-radius:8px; background:#09090b;">
+            ${tabRows}
+        </div>
+    `;
+    
+    customContent.innerHTML = tableHTML + tabsBoxHTML;
     customContent.style.display = 'block';
+
+    const toggleAll = customContent.querySelector('#toggleAllSaveTabs');
+    if (toggleAll) {
+        toggleAll.addEventListener('change', (e) => {
+            customContent.querySelectorAll('.save-tab-item-cb').forEach(cb => {
+                cb.checked = e.target.checked;
+            });
+        });
+    }
 
     const cbs = customContent.querySelectorAll('.save-tab-session-cb');
     cbs.forEach(cb => {
@@ -411,6 +496,18 @@ function showSaveTabsModal(urlsText) {
     confirmBtn.innerText = 'Save Tabs';
     
     confirmBtn.onclick = () => {
+        const checkedItemCbs = customContent.querySelectorAll('.save-tab-item-cb:checked');
+        if (checkedItemCbs.length === 0) {
+            alert('Please select at least one tab to save.');
+            return;
+        }
+
+        const selectedTabUrls = Array.from(checkedItemCbs).map(cb => cb.getAttribute('data-url'));
+        const selectedTabIds = Array.from(checkedItemCbs)
+            .map(cb => cb.getAttribute('data-tab-id'))
+            .filter(id => id && id !== 'undefined' && id !== 'null')
+            .map(Number);
+            
         const selectedCb = customContent.querySelector('.save-tab-session-cb:checked');
         let targetSessionId = null;
         
@@ -422,13 +519,39 @@ function showSaveTabsModal(urlsText) {
             state.sessions.unshift({ id: targetSessionId, name: newName, expanded: true, hidden: false, linkIds: [] });
         }
         
+        const urlsText = selectedTabUrls.join('\n');
         addLinks(urlsText, targetSessionId);
         closeModal();
         switchView('sessions');
         renderSessions();
+
+        showCloseTabsPrompt(selectedTabIds, selectedTabUrls.length);
     };
 
     document.getElementById('customModal').style.display = 'flex';
+}
+
+function showCloseTabsPrompt(tabIdsToClose, savedCount) {
+    showModal(
+        'Close Saved Tabs?',
+        `Do you want to close the ${savedCount} selected tab(s) that were just saved?`,
+        () => {
+            if (tabIdsToClose && tabIdsToClose.length > 0 && typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.remove) {
+                chrome.tabs.remove(tabIdsToClose);
+            }
+        },
+        true
+    );
+    const confirmBtn = document.getElementById('modalConfirmBtn');
+    const cancelBtn = document.getElementById('modalCancelBtn');
+    if (confirmBtn) {
+        confirmBtn.innerText = 'Yes';
+        confirmBtn.style.background = 'var(--danger)';
+        confirmBtn.style.borderColor = 'var(--danger)';
+    }
+    if (cancelBtn) {
+        cancelBtn.innerText = 'No';
+    }
 }
 
 function confirmDeleteSessionLink(sessionId, linkId) {

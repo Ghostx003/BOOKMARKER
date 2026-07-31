@@ -319,6 +319,8 @@
             input.disabled = false;
             input.style.opacity = '1';
             document.getElementById('modalTextarea').style.display = 'none';
+            const cancelBtn = document.getElementById('modalCancelBtn');
+            if (cancelBtn) cancelBtn.innerText = 'Cancel';
             const customContent = document.getElementById('modalCustomContent');
             if (customContent) {
                 customContent.style.display = 'none';
@@ -326,7 +328,20 @@
             }
         }
 
-        function showSaveTabsModal(urlsText) {
+        async function handleSaveTabsClick() {
+            let tabsList = [];
+            if (typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.query) {
+                const tabs = await chrome.tabs.query({ currentWindow: true });
+                tabsList = tabs.filter(t => t.url && !t.url.startsWith('chrome://') && !t.url.startsWith('edge://') && !t.url.startsWith('about:'));
+            }
+            if (tabsList.length === 0) {
+                const dummyUrl = window.location.href;
+                tabsList = [{ id: null, url: dummyUrl, title: document.title || 'Current Web Page', favIconUrl: 'icon.png' }];
+            }
+            showSaveTabsModal(tabsList);
+        }
+
+        function showSaveTabsModal(tabsList) {
             document.getElementById('modalTitle').innerText = 'Save All Tabs';
             document.getElementById('modalDesc').innerText = 'Save open tabs to a new session or select an existing session below:';
             
@@ -363,7 +378,7 @@
                 
                 tableHTML = `
                     <div style="margin-top:12px; margin-bottom:6px; font-size:0.8rem; font-weight:600; color:#a1a1aa;">Or select an existing session:</div>
-                    <div style="max-height:160px; overflow-y:auto; border:1px solid #27272a; border-radius:8px; background:#09090b;">
+                    <div style="max-height:130px; overflow-y:auto; border:1px solid #27272a; border-radius:8px; background:#09090b; margin-bottom:14px;">
                         <table style="width:100%; border-collapse:collapse; text-align:left;">
                             <thead>
                                 <tr style="border-b:1px solid #27272a; background:#121215; color:#a1a1aa; font-size:0.75rem;">
@@ -380,11 +395,51 @@
                     </div>
                 `;
             } else {
-                tableHTML = `<div style="margin-top:10px; font-size:0.85rem; color:#71717a; text-align:center;">No existing sessions found.</div>`;
+                tableHTML = `<div style="margin-top:10px; margin-bottom:14px; font-size:0.85rem; color:#71717a; text-align:center;">No existing sessions found.</div>`;
             }
             
-            customContent.innerHTML = tableHTML;
+            // LIST OF ALL TABS BOX
+            let tabRows = tabsList.map(t => {
+                let domain = 'unknown';
+                try { domain = new URL(t.url).hostname.replace(/^www\./, ''); } catch(e){}
+                const fav = (domain && domain.includes('.')) ? `https://icons.duckduckgo.com/ip3/${domain}.ico` : (t.favIconUrl || DEFAULT_ICON);
+                const titleText = t.title || domain || t.url;
+                
+                return `
+                    <div style="display:flex; align-items:center; gap:8px; padding:6px 8px; border-bottom:1px solid #27272a; background:#121215;">
+                        <input type="checkbox" class="save-tab-item-cb" data-tab-id="${t.id || ''}" data-url="${t.url}" checked style="accent-color:var(--accent); cursor:pointer;">
+                        <img src="${fav}" style="width:16px; height:16px; border-radius:4px; object-fit:contain;" onerror="this.onerror=null;this.src='${DEFAULT_ICON}'">
+                        <div style="flex-grow:1; overflow:hidden; text-align:left;">
+                            <div style="font-size:0.78rem; font-weight:600; color:#f4f4f5; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${titleText}</div>
+                            <div style="font-size:0.7rem; color:#a1a1aa; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${t.url}</div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            const tabsBoxHTML = `
+                <div style="margin-top:6px; margin-bottom:6px; display:flex; justify-content:space-between; align-items:center;">
+                    <div style="font-size:0.8rem; font-weight:600; color:#a1a1aa;">List of all tabs:</div>
+                    <label style="font-size:0.75rem; color:#8b5cf6; cursor:pointer; user-select:none;">
+                        <input type="checkbox" id="toggleAllSaveTabs" checked style="accent-color:var(--accent); vertical-align:middle; margin-right:4px;"> Select All
+                    </label>
+                </div>
+                <div style="max-height:160px; overflow-y:auto; border:1px solid #27272a; border-radius:8px; background:#09090b;">
+                    ${tabRows}
+                </div>
+            `;
+            
+            customContent.innerHTML = tableHTML + tabsBoxHTML;
             customContent.style.display = 'block';
+
+            const toggleAll = customContent.querySelector('#toggleAllSaveTabs');
+            if (toggleAll) {
+                toggleAll.addEventListener('change', (e) => {
+                    customContent.querySelectorAll('.save-tab-item-cb').forEach(cb => {
+                        cb.checked = e.target.checked;
+                    });
+                });
+            }
 
             const cbs = customContent.querySelectorAll('.save-tab-session-cb');
             cbs.forEach(cb => {
@@ -407,6 +462,18 @@
             confirmBtn.innerText = 'Save Tabs';
             
             confirmBtn.onclick = () => {
+                const checkedItemCbs = customContent.querySelectorAll('.save-tab-item-cb:checked');
+                if (checkedItemCbs.length === 0) {
+                    alert('Please select at least one tab to save.');
+                    return;
+                }
+
+                const selectedTabUrls = Array.from(checkedItemCbs).map(cb => cb.getAttribute('data-url'));
+                const selectedTabIds = Array.from(checkedItemCbs)
+                    .map(cb => cb.getAttribute('data-tab-id'))
+                    .filter(id => id && id !== 'undefined' && id !== 'null')
+                    .map(Number);
+                    
                 const selectedCb = customContent.querySelector('.save-tab-session-cb:checked');
                 let targetSessionId = null;
                 
@@ -418,13 +485,39 @@
                     state.sessions.unshift({ id: targetSessionId, name: newName, expanded: true, hidden: false, linkIds: [] });
                 }
                 
+                const urlsText = selectedTabUrls.join('\n');
                 addLinks(urlsText, targetSessionId);
                 closeModal();
                 switchView('sessions');
                 renderSessions();
+
+                showCloseTabsPrompt(selectedTabIds, selectedTabUrls.length);
             };
 
             document.getElementById('customModal').style.display = 'flex';
+        }
+
+        function showCloseTabsPrompt(tabIdsToClose, savedCount) {
+            showModal(
+                'Close Saved Tabs?',
+                `Do you want to close the ${savedCount} selected tab(s) that were just saved?`,
+                () => {
+                    if (tabIdsToClose && tabIdsToClose.length > 0 && typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.remove) {
+                        chrome.tabs.remove(tabIdsToClose);
+                    }
+                },
+                true
+            );
+            const confirmBtn = document.getElementById('modalConfirmBtn');
+            const cancelBtn = document.getElementById('modalCancelBtn');
+            if (confirmBtn) {
+                confirmBtn.innerText = 'Yes';
+                confirmBtn.style.background = 'var(--danger)';
+                confirmBtn.style.borderColor = 'var(--danger)';
+            }
+            if (cancelBtn) {
+                cancelBtn.innerText = 'No';
+            }
         }
 
         function confirmDeleteGroup(id) {
