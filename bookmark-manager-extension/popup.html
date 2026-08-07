@@ -12,91 +12,135 @@
 </head>
 <body class="is-popup">
 
-    <nav>
-        <div class="nav-item active" id="nav-home">All Links</div>
-        <div class="nav-item" id="nav-sessions">Sessions</div>
-        <div class="nav-item" id="nav-groups">Groups</div>
-        <div class="nav-item" id="nav-export">Export/Restore</div>
-        <div class="nav-item nav-action" id="nav-cleanup">Cleanup</div>
-        <div class="nav-item nav-action" style="color:var(--danger); border-color:var(--danger);" id="nav-reset">Reset</div>
-        <div class="nav-item nav-action" id="nav-fullscreen" title="Open Full Screen" style="padding: 6px; flex-grow: 0; min-width: 32px;"><svg class="icon-svg"><use href="#icon-fullscreen"></use></svg></div>
-    </nav>
+    <div id="sidebarOverlay" class="sidebar-overlay"></div>
 
-    <main id="view-home" class="active-view">
-        <div class="input-group">
-            <h2 style="border:none; padding:0; margin:0; font-size:1.2rem;">Quick Add</h2>
-            <textarea id="homePaste" placeholder="Paste links here..." rows="2"></textarea>
-            <div style="display:flex; gap:10px;">
-                <button class="primary" style="flex:1;" id="btnAddLinks">Add Links</button>
-                <!-- NEW FEATURE: Save All Tabs -->
-                <button class="btn-success" style="flex:1;" id="btnSaveTabs">Save All Tabs</button>
+    <div class="app-layout">
+        <!-- LEFT PROFILES SIDEBAR -->
+        <aside id="profilesSidebar" class="profiles-sidebar">
+            <div class="sidebar-header">
+                <div class="brand">
+                    <div class="brand-avatar">
+                        <svg style="width:16px; height:16px; fill:currentColor;" viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+                    </div>
+                    <span class="brand-title">Profiles</span>
+                </div>
+                <div style="display:flex; gap:6px; align-items:center;">
+                    <button id="btnSidebarAddProfile" class="sidebar-add-btn" title="Create New Profile">+ New</button>
+                    <button id="btnToggleSidebarMinimize" class="sidebar-minimize-btn" title="Minimize / Expand Sidebar">
+                        <span style="font-size:16px; font-weight:bold; color:#ffffff; line-height:1; display:flex; align-items:center; justify-content:center;">☰</span>
+                    </button>
+                </div>
             </div>
-        </div>
-        <div class="controls-bar">
-            <div class="header-wrap">
-                <h2 style="margin:0; border:none; padding:0; font-size:1.2rem;">All Links</h2>
-                <span id="stackCounter" class="counter-badge">Loading...</span>
-            </div>
-            <select id="sortMode" class="sort-dropdown">
-                <option value="new">Newest First</option>
-                <option value="unchecked">Unchecked First</option>
-                <option value="checked">Checked First</option>
-                <option value="random">Shuffle</option>
-            </select>
-        </div>
-        <div id="stackContainer" style="background: #121215; border-radius: 12px; border: 1px solid #27272a;"></div>
-    </main>
 
-    <main id="view-sessions">
-        <div class="controls-bar" style="flex-direction:row; justify-content:space-between; flex-wrap:wrap; gap:10px;">
-            <h2 style="margin:0; border:none; padding:0; font-size:1.2rem;">Sessions</h2>
-            <div style="display:flex; gap:10px;">
-                <button class="btn-warning" id="btnMergeSessions">Merge Selected (<span id="mergeCount">0</span>)</button>
-                <button class="primary" id="btnNewSession">+ New</button>
+            <div class="sidebar-scroll">
+                <div class="sidebar-section-title">YOUR PROFILES</div>
+                <div id="sidebarProfilesList" class="sidebar-profiles-list">
+                    <!-- Dynamically rendered profile list -->
+                </div>
             </div>
-        </div>
-        <div id="sessionsContainer"></div>
-    </main>
 
-    <main id="view-groups">
-        <div class="input-group">
-            <h2 style="border:none; padding:0; margin:0; font-size:1.2rem;">Create Groups</h2>
-            <p style="color:var(--text-muted); font-size:0.85rem;">Shuffles unwatched, visible links.</p>
-            <div style="display:flex; gap:10px;">
-                <input type="number" id="groupSize" value="2" min="1" style="flex:1;">
-                <button class="primary" id="btnShuffleGroups" style="flex:2;">Shuffle</button>
+            <div class="sidebar-footer">
+                <button id="btnSidebarManage" class="sidebar-manage-btn">
+                    <svg style="width:14px; height:14px; fill:currentColor;" viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+                    <span>Manage Profiles</span>
+                </button>
             </div>
-        </div>
-        <div id="groupsContainer"></div>
-    </main>
+        </aside>
 
-    <main id="view-export">
-        <h2 style="color: var(--success); border-color: var(--success); font-size:1.3rem;">Data Management</h2>
-        
-        <div class="export-card">
-            <h3 style="margin-bottom:10px; color:white; font-size:1.1rem;">Full State Backup</h3>
-            <p style="color:#888; margin-bottom:15px; font-size:0.85rem;">Save everything (Sessions, Groups, History) to JSON.</p>
-            <div class="export-actions">
-                <button class="primary" id="btnExportState">💾 Export State (JSON)</button>
-                <button class="primary" style="background: #333; border-color: #555;" id="btnTriggerRestore">♻️ Recovery / Restore</button>
-                <input type="file" id="restoreInput" accept=".json" style="display:none;">
-            </div>
-        </div>
+        <!-- APP MAIN CONTENT WRAPPER -->
+        <div class="app-main">
+            <nav>
+                <div class="nav-item" id="nav-home">All Links</div>
+                <div class="nav-item active" id="nav-sessions">Sessions</div>
+                <div class="nav-item" id="nav-groups">Groups</div>
+                <div class="nav-item" id="nav-export">Export/Restore</div>
+                <div class="nav-item nav-action" id="nav-cleanup">Cleanup</div>
+                <div class="nav-item nav-action" style="color:var(--danger); border-color:var(--danger);" id="nav-reset">Reset</div>
+                <div class="nav-item nav-action" style="color:var(--accent); border-color:rgba(139, 92, 246, 0.4);" id="nav-profile" title="Toggle Profiles Sidebar">Profile</div>
+                <div class="nav-item nav-action" id="nav-fullscreen" title="Open Full Screen" style="padding: 6px; flex-grow: 0; min-width: 32px;"><svg class="icon-svg"><use href="#icon-fullscreen"></use></svg></div>
+            </nav>
 
-        <div class="export-card">
-            <h3 style="margin-bottom:10px; color:white; font-size:1.1rem;">Text Export</h3>
-            <p style="color:#888; margin-bottom:15px; font-size:0.85rem;">Save links as text files.</p>
-            <div class="export-actions">
-                <button class="primary" id="btnExportMain">📄 Save Main Links Only</button>
-                <button class="primary" id="btnExportAllSessions">📑 Save All Session Links</button>
-            </div>
-        </div>
+            <main id="view-home">
+                <div class="input-group">
+                    <h2 style="border:none; padding:0; margin:0; font-size:1.2rem;">Quick Add</h2>
+                    <textarea id="homePaste" placeholder="Paste links here..." rows="2"></textarea>
+                    <div style="display:flex; gap:10px;">
+                        <button class="primary" style="flex:1;" id="btnAddLinks">Add Links</button>
+                        <!-- NEW FEATURE: Save All Tabs -->
+                        <button class="btn-success" style="flex:1;" id="btnSaveTabs">Save All Tabs</button>
+                    </div>
+                </div>
+                <div class="controls-bar">
+                    <div class="header-wrap">
+                        <h2 style="margin:0; border:none; padding:0; font-size:1.2rem;">All Links</h2>
+                        <span id="stackCounter" class="counter-badge">Loading...</span>
+                    </div>
+                    <div style="display:flex; gap:8px; align-items:center;">
+                        <button class="btn-danger" id="btnDeleteDoneHome" style="padding: 6px 12px; font-size: 0.85rem; border-radius: 6px; font-weight: 600; cursor: pointer;">Delete Done</button>
+                        <select id="sortMode" class="sort-dropdown">
+                            <option value="new">Newest First</option>
+                            <option value="unchecked">Unchecked First</option>
+                            <option value="checked">Checked First</option>
+                            <option value="random">Shuffle</option>
+                        </select>
+                    </div>
+                </div>
+                <div id="stackContainer" style="background: #121215; border-radius: 12px; border: 1px solid #27272a;"></div>
+            </main>
 
-        <div class="export-card">
-            <h3 style="margin-bottom:10px; color:white; font-size:1.1rem;">Individual Sessions</h3>
-            <div id="exportSessionList"></div>
+            <main id="view-sessions" class="active-view">
+                <div class="controls-bar" style="flex-direction:row; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+                    <h2 style="margin:0; border:none; padding:0; font-size:1.2rem;">Sessions</h2>
+                    <div style="display:flex; gap:10px;">
+                        <button class="btn-danger" id="btnDeleteDone" style="padding: 6px 12px; font-size: 0.85rem; border-radius: 6px; font-weight: 600; cursor: pointer;">Delete Done</button>
+                        <button class="btn-warning" id="btnMergeSessions">Merge Selected (<span id="mergeCount">0</span>)</button>
+                        <button class="primary" id="btnNewSession">+ New</button>
+                    </div>
+                </div>
+                <div id="sessionsContainer"></div>
+            </main>
+
+            <main id="view-groups">
+                <div class="input-group">
+                    <h2 style="border:none; padding:0; margin:0; font-size:1.2rem;">Create Groups</h2>
+                    <p style="color:var(--text-muted); font-size:0.85rem;">Shuffles unwatched, visible links.</p>
+                    <div style="display:flex; gap:10px;">
+                        <input type="number" id="groupSize" value="2" min="1" style="flex:1;">
+                        <button class="primary" id="btnShuffleGroups" style="flex:2;">Shuffle</button>
+                    </div>
+                </div>
+                <div id="groupsContainer"></div>
+            </main>
+
+            <main id="view-export">
+                <h2 style="color: var(--success); border-color: var(--success); font-size:1.3rem;">Data Management</h2>
+                
+                <div class="export-card">
+                    <h3 style="margin-bottom:10px; color:white; font-size:1.1rem;">Full State Backup</h3>
+                    <p style="color:#888; margin-bottom:15px; font-size:0.85rem;">Save everything (Sessions, Groups, History) to JSON.</p>
+                    <div class="export-actions">
+                        <button class="primary" id="btnExportState">💾 Export State (JSON)</button>
+                        <button class="primary" style="background: #333; border-color: #555;" id="btnTriggerRestore">♻️ Recovery / Restore</button>
+                        <input type="file" id="restoreInput" accept=".json" style="display:none;">
+                    </div>
+                </div>
+
+                <div class="export-card">
+                    <h3 style="margin-bottom:10px; color:white; font-size:1.1rem;">Text Export</h3>
+                    <p style="color:#888; margin-bottom:15px; font-size:0.85rem;">Save links as text files.</p>
+                    <div class="export-actions">
+                        <button class="primary" id="btnExportMain">📄 Save Main Links Only</button>
+                        <button class="primary" id="btnExportAllSessions">📑 Save All Session Links</button>
+                    </div>
+                </div>
+
+                <div class="export-card">
+                    <h3 style="margin-bottom:10px; color:white; font-size:1.1rem;">Individual Sessions</h3>
+                    <div id="exportSessionList"></div>
+                </div>
+            </main>
         </div>
-    </main>
+    </div>
 
     <!-- Custom Modal -->
     <div id="customModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.75); backdrop-filter:blur(4px); z-index:2000; align-items:center; justify-content:center;">
